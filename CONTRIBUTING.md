@@ -17,7 +17,7 @@ Please search existing issues first. **Do not** open a public issue for a securi
 1. Fork the repository and create a branch from `main`.
 2. Keep each pull request focused on one change.
 3. Test what you changed:
-   - Python: run the agent locally (`uvicorn server:app --reload`) and complete one run end to end against a test repository.
+   - Python: run the agent locally (`uvicorn server:app --app-dir src --reload` from the repository root) and complete one run end to end against a test repository.
    - Kubernetes manifests and scripts: deploy with `scripts/deploy.sh` to a test cluster and check `scripts/deploy.sh status`. Run `shellcheck` on any script you touch.
    - Documentation: check that commands and links work.
 4. Never commit secrets. `.env` is git-ignored; keep it that way, and use placeholders such as `<ACCOUNT_ID>` and `ghp-xxxx` in examples.
