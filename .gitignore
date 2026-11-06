@@ -1,5 +1,19 @@
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
 .venv/
+venv/
+
+# Local settings and secrets
 .env
+.env.*
+!.env.example
+
+# Agent working copies
 repos/
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

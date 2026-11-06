@@ -84,3 +84,27 @@ IMAGE=<acct>.dkr.ecr.us-east-1.amazonaws.com/code-change-agent:v1 scripts/deploy
 ```
 
 `setup-gvisor` labels the nodes `sandbox=gvisor` and runs [k8s/gvisor/gvisor-installer.yaml](k8s/gvisor/gvisor-installer.yaml), a privileged DaemonSet that installs `runsc`, registers it with containerd and restarts containerd once per node. The `gvisor` RuntimeClass ([k8s/gvisor/runtimeclass-gvisor.yaml](k8s/gvisor/runtimeclass-gvisor.yaml)) only schedules pods onto those nodes. After the rollout, the script checks `dmesg` in the pod to confirm it runs under gVisor.
+
+## Important
+
+This is sample code for learning and demonstration. It is not production ready:
+
+- The web UI has no authentication. Anyone who can reach the Service can make the agent push branches and open merge requests with your token. Keep the Services `ClusterIP` and use `kubectl port-forward`; don't put them behind a public load balancer.
+- Use a token scoped to a test repository only.
+- Runs are held in memory, so the deployments run a single replica and a restart loses in-flight runs.
+- The gVisor installer is a privileged DaemonSet that edits `/etc/containerd/config.toml` and restarts containerd on the nodes you label. Use dedicated nodes or a dedicated node group.
+
+See [SECURITY.md](SECURITY.md) for how to report a security issue.
+
+## Maintainers
+
+- Adit Modi
+- Ishan Modi
+
+## Contributing
+
+Issues and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## License
+
+MIT. See [LICENSE](LICENSE).
