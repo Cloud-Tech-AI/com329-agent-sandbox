@@ -1,6 +1,8 @@
+.git
 __pycache__
 *.pyc
 .venv
 .env
 k8s
+scripts
 repos

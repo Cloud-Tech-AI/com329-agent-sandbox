@@ -13,7 +13,7 @@ from pydantic import BaseModel
 
 from agent import run_agent
 
-STATIC = Path(__file__).parent / "static"
+STATIC = Path(__file__).resolve().parent.parent / "static"  # static/ sits next to src/
 RUNS: dict[str, queue.Queue] = {}
 
 app = FastAPI(title="Code Change Agent")
