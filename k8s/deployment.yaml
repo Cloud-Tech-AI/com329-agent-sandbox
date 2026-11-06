@@ -6,6 +6,8 @@ metadata:
     app: code-change-agent
 spec:
   replicas: 1 # runs are held in memory, so keep a single replica
+  strategy:
+    type: Recreate # nodes are at their max-pods limit, so there is no slot for a surge pod
   selector:
     matchLabels:
       app: code-change-agent

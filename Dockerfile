@@ -1,7 +1,7 @@
 FROM python:3.12-slim
-# git: the agent clones, commits and pushes. Pull requests are opened via the GitHub REST API directly.
+# git: the agent clones, commits and pushes. curl/procps/iproute2: the shell tools an agent reaches for.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends git \
+    && apt-get install -y --no-install-recommends git curl ca-certificates procps iproute2 \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 ENV PYTHONUNBUFFERED=1

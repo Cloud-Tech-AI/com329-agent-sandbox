@@ -52,7 +52,7 @@
       button.disabled = true;
       addStep("info", "Starting agent...");
 
-      const response = await fetch("/runs", {
+      const response = await fetch("runs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -62,7 +62,7 @@
       });
       const { id } = await response.json();
 
-      const source = new EventSource(`/runs/${id}/events`);
+      const source = new EventSource(`runs/${id}/events`);
       source.onmessage = (msg) => {
         const event = JSON.parse(msg.data);
         addStep(event.type, event.text);
