@@ -1,0 +1,51 @@
+# Cuts the gVisor agent off from the cluster. gVisor protects the node's kernel;
+# this protects the cluster: the pod can only resolve DNS, get its Bedrock
+# credentials from the Pod Identity agent, and make HTTPS calls to the internet
+# (Bedrock, GitHub). It cannot reach the Kubernetes API server, kubelets, other
+# pods or Services, or the node's IMDS.
+#
+# Needs network policy enforcement in the VPC CNI (enableNetworkPolicy=true);
+# without it this object is accepted but ignored.
+#
+# CIDRs for sample-cluster: VPC 172.31.0.0/16 (nodes, pods, API server ENIs),
+# Service CIDR 10.100.0.0/16, kube-dns 10.100.0.10. Change them for another cluster.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: code-change-agent-gvisor-isolate
+spec:
+  podSelector:
+    matchLabels:
+      app: code-change-agent-gvisor
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - ports: # the web UI, through its Service or port-forward
+        - protocol: TCP
+          port: 8000
+  egress:
+    - to: # cluster DNS
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+        - ipBlock:
+            cidr: 10.100.0.10/32
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    - to: # EKS Pod Identity agent on the node, for Bedrock credentials
+        - ipBlock:
+            cidr: 169.254.170.23/32
+      ports:
+        - { protocol: TCP, port: 80 }
+    - to: # HTTPS to the internet only (Bedrock, GitHub)
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 172.31.0.0/16  # VPC: nodes, kubelets, pods, API server ENIs
+              - 10.100.0.0/16  # Service ClusterIPs (incl. kubernetes.default)
+              - 169.254.0.0/16 # link-local: IMDS and other node endpoints
+      ports:
+        - { protocol: TCP, port: 443 }

@@ -1,0 +1,6 @@
+strands-agents
+boto3
+fastapi
+uvicorn[standard]
+pydantic-settings
+requests

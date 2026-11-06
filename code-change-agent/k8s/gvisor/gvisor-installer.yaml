@@ -1,0 +1,124 @@
+# Installs gVisor (runsc + containerd shim) on every node labelled sandbox=gvisor
+# and registers the "runsc" runtime with containerd. Applied by
+# `scripts/deploy.sh setup-gvisor`. Re-runs on node reboot, and is idempotent.
+#
+# It is privileged and changes the host (writes /usr/local/bin, edits
+# /etc/containerd/config.toml, restarts containerd), so only label nodes you
+# want to use for sandboxed pods. Running pods survive the containerd restart.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gvisor-system
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gvisor-install-script
+  namespace: gvisor-system
+data:
+  install.sh: |
+    #!/bin/bash
+    # Runs on the host (via nsenter), not in the container.
+    set -euo pipefail
+    ARCH=$(uname -m)   # x86_64 or aarch64
+    RELEASE=latest     # or a dated release such as 20261102, to pin the version
+    URL=https://storage.googleapis.com/gvisor/releases/release/${RELEASE}/${ARCH}
+
+    if [[ ! -x /usr/local/bin/runsc || ! -x /usr/local/bin/containerd-shim-runsc-v1 ]]; then
+      echo "installing gVisor ${RELEASE} for ${ARCH}"
+      # Releases ship as one tarball: runsc, containerd-shim-runsc-v1 and gvisor-bin/
+      # (the Sentry and helpers). Keep gvisor-bin/ next to runsc.
+      if command -v bzip2 >/dev/null; then TAR=gvisor.tar.bz2; FLAG=-j
+      elif command -v zstd >/dev/null; then TAR=gvisor.tar.zstd; FLAG=--zstd
+      else echo "need bzip2 or zstd on the node" >&2; exit 1; fi
+      tmp=$(mktemp -d)
+      cd "$tmp"
+      curl -fsSLO "${URL}/${TAR}"
+      curl -fsSLO "${URL}/${TAR}.sha512"
+      sha512sum -c "${TAR}.sha512"
+      tar -x ${FLAG} -f "${TAR}" -C /usr/local/bin --no-same-owner
+      cd / && rm -rf "$tmp"
+    fi
+    runsc --version
+
+    # kubelet on EKS uses the systemd cgroup driver, so runsc must too.
+    cat > /etc/containerd/runsc.toml <<'EOF'
+    [runsc_config]
+      systemd-cgroup = "true"
+    EOF
+
+    CFG=/etc/containerd/config.toml
+    if grep -q 'runtimes.runsc' "$CFG"; then
+      echo "runsc already registered in $CFG"
+      exit 0
+    fi
+    # containerd 2.x (config version 3) and 1.x (version 2) use different plugin paths.
+    if grep -Eq '^version *= *3' "$CFG"; then
+      PLUGIN="plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.runsc"
+    else
+      PLUGIN='plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runsc'
+    fi
+    cp "$CFG" "${CFG}.bak-gvisor"
+    cat >> "$CFG" <<EOF
+
+    # added by gvisor-installer
+    [${PLUGIN}]
+      runtime_type = "io.containerd.runsc.v1"
+    [${PLUGIN}.options]
+      TypeUrl = "io.containerd.runsc.v1.options"
+      ConfigPath = "/etc/containerd/runsc.toml"
+    EOF
+    echo "registered runsc in $CFG, restarting containerd"
+    systemctl restart containerd
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: gvisor-installer
+  namespace: gvisor-system
+  labels:
+    app: gvisor-installer
+spec:
+  selector:
+    matchLabels:
+      app: gvisor-installer
+  template:
+    metadata:
+      labels:
+        app: gvisor-installer
+    spec:
+      nodeSelector:
+        sandbox: gvisor
+      hostPID: true
+      tolerations:
+        - operator: Exists
+      initContainers:
+        - name: install
+          image: public.ecr.aws/docker/library/busybox:1.36
+          securityContext:
+            privileged: true
+          command:
+            - sh
+            - -c
+            - |
+              cp /script/install.sh /host/tmp/gvisor-install.sh
+              nsenter -t 1 -m -u -i -n -p -- bash /tmp/gvisor-install.sh
+          volumeMounts:
+            - name: host
+              mountPath: /host
+            - name: script
+              mountPath: /script
+      containers:
+        - name: pause # keeps the pod Running so the rollout shows install finished
+          image: registry.k8s.io/pause:3.10
+          resources:
+            requests:
+              cpu: 1m
+              memory: 4Mi
+      volumes:
+        - name: host
+          hostPath:
+            path: /
+        - name: script
+          configMap:
+            name: gvisor-install-script

@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Code Change Agent</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 760px; margin: 2rem auto; padding: 0 1rem; color: #222; }
+    label { display: block; margin-top: 1rem; font-weight: 600; }
+    input, textarea { width: 100%; padding: 0.5rem; font: inherit; box-sizing: border-box; }
+    textarea { min-height: 90px; }
+    .hint { margin: 0.35rem 0 0; font-size: 0.85rem; color: #666; }
+    .hint code { background: #f0f0f0; padding: 0.05rem 0.3rem; border-radius: 3px; }
+    button { margin-top: 1rem; padding: 0.6rem 1.2rem; font: inherit; cursor: pointer; }
+    button:disabled { opacity: 0.5; cursor: default; }
+    #log { margin-top: 1.5rem; border: 1px solid #ddd; border-radius: 6px; padding: 0.75rem; min-height: 120px; background: #fafafa; }
+    .step { font-family: ui-monospace, monospace; font-size: 0.9rem; padding: 0.2rem 0; }
+    .step.tool::before { content: "⚙ "; }
+    .step.info { color: #555; }
+    .step.done { color: #0a7d2c; font-weight: 600; white-space: pre-wrap; }
+    .step.error { color: #b00020; font-weight: 600; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <h1>Code Change Agent</h1>
+
+  <label for="project">GitHub repository (owner/name)</label>
+  <input id="project" placeholder="my-org/my-repo">
+  <p class="hint">The agent clones this repo itself using the server's <code>GITHUB_TOKEN</code>,
+    commits the change on a new branch, and opens the pull request here.</p>
+
+  <label for="task">What should change?</label>
+  <textarea id="task" placeholder="Add a /version endpoint that returns the app version"></textarea>
+
+  <button id="run">Run agent</button>
+
+  <div id="log"></div>
+
+  <script>
+    const log = document.getElementById("log");
+    const button = document.getElementById("run");
+
+    function addStep(type, text) {
+      const div = document.createElement("div");
+      div.className = `step ${type}`;
+      div.textContent = type === "tool" ? `using ${text}` : text;
+      log.appendChild(div);
+      log.scrollTop = log.scrollHeight;
+    }
+
+    button.addEventListener("click", async () => {
+      log.innerHTML = "";
+      button.disabled = true;
+      addStep("info", "Starting agent...");
+
+      const response = await fetch("/runs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          github_repo: document.getElementById("project").value,
+          task: document.getElementById("task").value,
+        }),
+      });
+      const { id } = await response.json();
+
+      const source = new EventSource(`/runs/${id}/events`);
+      source.onmessage = (msg) => {
+        const event = JSON.parse(msg.data);
+        addStep(event.type, event.text);
+        if (event.type === "done" || event.type === "error") {
+          source.close();
+          button.disabled = false;
+        }
+      };
+      source.onerror = () => {
+        source.close();
+        button.disabled = false;
+      };
+    });
+  </script>
+</body>
+</html>

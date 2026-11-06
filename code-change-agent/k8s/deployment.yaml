@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: code-change-agent
+  labels:
+    app: code-change-agent
+spec:
+  replicas: 1 # runs are held in memory, so keep a single replica
+  selector:
+    matchLabels:
+      app: code-change-agent
+  template:
+    metadata:
+      labels:
+        app: code-change-agent
+    spec:
+      serviceAccountName: code-change-agent # IAM role for Bedrock comes from here (IRSA / Pod Identity), see serviceaccount.yaml
+      affinity: # leave gVisor nodes (sandbox=gvisor) for sandboxed pods
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: sandbox
+                    operator: NotIn
+                    values: [gvisor]
+      containers:
+        - name: code-change-agent
+          image: code-change-agent:latest
+          ports:
+            - containerPort: 8000
+          env:
+            - name: SECRETS_DIR
+              value: /etc/code-change-agent/secrets
+          volumeMounts:
+            - name: app-secrets
+              mountPath: /etc/code-change-agent/secrets
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8000
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8000
+      volumes:
+        - name: app-secrets
+          secret:
+            secretName: code-change-agent-secrets
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: code-change-agent
+spec:
+  selector:
+    app: code-change-agent
+  ports:
+    - port: 80
+      targetPort: 8000

@@ -1,0 +1,14 @@
+services:
+  code-change-agent:
+    build: .
+    ports:
+      - "8000:8000"
+    # Settings are read from .env (see .env.example) by config.py
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      # read-only AWS config/creds for Bedrock (works with SSO profiles too)
+      - ~/.aws:/root/.aws:ro
+      # git repos the agent edits. Enter paths such as /repos/my-repo in the page.
+      - ${REPOS_DIR:-./repos}:/repos

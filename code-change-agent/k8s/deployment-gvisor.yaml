@@ -1,0 +1,65 @@
+# Same agent as deployment.yaml, but every container runs inside a gVisor sandbox
+# (runtimeClassName: gvisor). It has its own labels and Service, so the two
+# deployments run side by side.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: code-change-agent-gvisor
+  labels:
+    app: code-change-agent-gvisor
+    sandbox: gvisor
+spec:
+  replicas: 1 # runs are held in memory, so keep a single replica
+  strategy:
+    type: Recreate # gVisor nodes are few; don't need a spare pod slot to roll out
+  selector:
+    matchLabels:
+      app: code-change-agent-gvisor
+  template:
+    metadata:
+      labels:
+        app: code-change-agent-gvisor
+        sandbox: gvisor
+    spec:
+      runtimeClassName: gvisor # see gvisor/runtimeclass-gvisor.yaml; it also pins the pod to gVisor nodes
+      serviceAccountName: code-change-agent # same IAM role as the direct deployment
+      # No Kubernetes API token in the pod. Pod Identity still injects its own
+      # token (eks-pod-identity-token), so Bedrock access keeps working.
+      automountServiceAccountToken: false
+      containers:
+        - name: code-change-agent
+          image: code-change-agent:latest
+          ports:
+            - containerPort: 8000
+          env:
+            - name: SECRETS_DIR
+              value: /etc/code-change-agent/secrets
+          volumeMounts:
+            - name: app-secrets
+              mountPath: /etc/code-change-agent/secrets
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8000
+            initialDelaySeconds: 5 # the sandbox takes a little longer to start
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8000
+            initialDelaySeconds: 15
+      volumes:
+        - name: app-secrets
+          secret:
+            secretName: code-change-agent-secrets
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: code-change-agent-gvisor
+spec:
+  selector:
+    app: code-change-agent-gvisor
+  ports:
+    - port: 80
+      targetPort: 8000
